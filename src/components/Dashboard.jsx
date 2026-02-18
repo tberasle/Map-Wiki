@@ -20,8 +20,12 @@ const Dashboard = ({ projects, onCreateProject, onOpenProject, onDeleteProject, 
         if (trimmed && onRenameProject) {
             onRenameProject(id, trimmed);
         }
-        setEditingProjectId(null);
-        setEditingName('');
+        // Delay clearing so the card's onClick guard still sees editingProjectId
+        // (onBlur fires before onClick in the browser event order)
+        setTimeout(() => {
+            setEditingProjectId(null);
+            setEditingName('');
+        }, 200);
     };
 
     const handleCreate = (e) => {
@@ -118,7 +122,7 @@ const Dashboard = ({ projects, onCreateProject, onOpenProject, onDeleteProject, 
                         projects.map(project => (
                             <div
                                 key={project.id}
-                                onClick={() => onOpenProject(project.id)}
+                                onClick={() => { if (!editingProjectId) onOpenProject(project.id); }}
                                 style={{
                                     display: 'flex',
                                     justifyContent: 'space-between',
