@@ -5,11 +5,13 @@ import WikiEditor from './components/WikiEditor';
 import ContextMenu from './components/ContextMenu';
 import Dashboard from './components/Dashboard';
 import AtlasView from './components/AtlasView';
+import ConfirmDialog from './components/ConfirmDialog';
 import VisualEffects from './components/VisualEffects';
 import { sfx } from './utils/SoundManager';
 import StorageManager from './utils/StorageManager';
 import ProjectLoader from './utils/ProjectLoader';
 import html2canvas from 'html2canvas';
+import { ChevronLeft } from 'lucide-react';
 import './index.css';
 
 // ...
@@ -31,6 +33,8 @@ function App() {
   const [items, setItems] = useState([]); // Flat list of all items
   const [currentViewId, setCurrentViewId] = useState('root');
   const [rootMapImage, setRootMapImage] = useState(null);
+  const [rootTitle, setRootTitle] = useState('');
+  const [rootDescription, setRootDescription] = useState('');
 
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [activeEditorItem, setActiveEditorItem] = useState(null); // For animation
@@ -39,6 +43,12 @@ function App() {
   const [transitionOrigin, setTransitionOrigin] = useState(null); // { x, y } in percentages
 
   const [isGlobalEditMode, setIsGlobalEditMode] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+
+  const showConfirm = ({ title, message, confirmLabel, variant, onConfirm }) => {
+    setConfirmDialog({ title, message, confirmLabel, variant, onConfirm });
+  };
+  const closeConfirm = () => setConfirmDialog(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('map-wiki-theme');
     return saved ? saved === 'dark' : true;
@@ -106,6 +116,8 @@ function App() {
         name: (projects.find(p => p.id === currentProjectId) || {}).name, // Store name in object too? Optional but good for backup
         items,
         rootMapImage,
+        rootTitle,
+        rootDescription,
         isDarkMode,
         rootStarSettings
       };
@@ -187,6 +199,8 @@ function App() {
       id: newProject.id, // IDB Key
       items: [],
       rootMapImage: null,
+      rootTitle: '',
+      rootDescription: '',
       isDarkMode: true,
       rootStarSettings: DEFAULT_STAR_SETTINGS
     };
@@ -219,6 +233,8 @@ function App() {
         // Load State
         setItems(data.items || []);
         setRootMapImage(data.rootMapImage || null);
+        setRootTitle(data.rootTitle || '');
+        setRootDescription(data.rootDescription || '');
         setIsDarkMode(data.isDarkMode !== undefined ? data.isDarkMode : true);
         setRootStarSettings(data.rootStarSettings || DEFAULT_STAR_SETTINGS);
 
@@ -237,22 +253,25 @@ function App() {
     }
   };
 
-  const handleDeleteProject = async (id) => {
-    if (window.confirm("Are you sure you want to delete this project? This cannot be undone.")) {
-      try {
-        // Remove Data from IDB
-        await StorageManager.deleteProject(id);
-        // Also try removing from LS just in case
-        localStorage.removeItem(`map-wiki-project-${id}`);
-
-        // Update Index
-        const newIndex = projects.filter(p => p.id !== id);
-        setProjects(newIndex);
-        localStorage.setItem('map-wiki-index', JSON.stringify(newIndex));
-      } catch (err) {
-        alert("Failed to delete project: " + err.message);
+  const handleDeleteProject = (id) => {
+    showConfirm({
+      title: 'Delete Project',
+      message: 'Are you sure you want to delete this project? This cannot be undone.',
+      confirmLabel: 'Delete Project',
+      variant: 'danger',
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await StorageManager.deleteProject(id);
+          localStorage.removeItem(`map-wiki-project-${id}`);
+          const newIndex = projects.filter(p => p.id !== id);
+          setProjects(newIndex);
+          localStorage.setItem('map-wiki-index', JSON.stringify(newIndex));
+        } catch (err) {
+          alert("Failed to delete project: " + err.message);
+        }
       }
-    }
+    });
   };
 
   const handleRenameProject = (id, newName) => {
@@ -284,6 +303,8 @@ function App() {
             id: newProject.id,
             items: data.items,
             rootMapImage: data.rootMapImage,
+            rootTitle: data.rootTitle || '',
+            rootDescription: data.rootDescription || '',
             isDarkMode: data.isDarkMode ?? true,
             rootStarSettings: data.rootStarSettings || DEFAULT_STAR_SETTINGS
           };
@@ -362,15 +383,22 @@ function App() {
   }, [items, isWikiVisible, selectedItemId, activeEditorItem]);
 
   const handleDeleteMap = () => {
-    if (window.confirm('Are you sure you want to delete the current map image? Pins will remain.')) {
-      if (currentViewId === 'root') {
-        setRootMapImage(null);
-      } else {
-        setItems(prev => prev.map(item =>
-          item.id === currentViewId ? { ...item, mapImage: null } : item
-        ));
+    showConfirm({
+      title: 'Delete Map Image',
+      message: 'Are you sure you want to delete the current map image? Pins will remain.',
+      confirmLabel: 'Delete Map',
+      variant: 'danger',
+      onConfirm: () => {
+        closeConfirm();
+        if (currentViewId === 'root') {
+          setRootMapImage(null);
+        } else {
+          setItems(prev => prev.map(item =>
+            item.id === currentViewId ? { ...item, mapImage: null } : item
+          ));
+        }
       }
-    }
+    });
   };
 
   const handleRightClick = (coords, clientCoords) => {
@@ -457,20 +485,27 @@ function App() {
   };
 
   const handleDeleteLocation = (id) => {
-    if (window.confirm('Delete this location and all its sub-content?')) {
-      const idsToDelete = [id];
-      const findChildren = (parentId) => {
-        const children = items.filter(i => i.parentId === parentId);
-        children.forEach(c => {
-          idsToDelete.push(c.id);
-          findChildren(c.id);
-        });
-      };
-      findChildren(id);
+    showConfirm({
+      title: 'Delete Location',
+      message: 'Delete this location and all its sub-content?',
+      confirmLabel: 'Delete Location',
+      variant: 'danger',
+      onConfirm: () => {
+        closeConfirm();
+        const idsToDelete = [id];
+        const findChildren = (parentId) => {
+          const children = items.filter(i => i.parentId === parentId);
+          children.forEach(c => {
+            idsToDelete.push(c.id);
+            findChildren(c.id);
+          });
+        };
+        findChildren(id);
 
-      setItems(items.filter(i => !idsToDelete.includes(i.id)));
-      if (selectedItemId === id) setSelectedItemId(null);
-    }
+        setItems(items.filter(i => !idsToDelete.includes(i.id)));
+        if (selectedItemId === id) setSelectedItemId(null);
+      }
+    });
   };
 
   // Delete key shortcut
@@ -592,316 +627,346 @@ function App() {
   };
 
   const handleResetStarSettings = () => {
-    if (window.confirm("Reset visual effects to default/inherited values?")) {
-      if (currentViewId === 'root') {
-        setRootStarSettings(DEFAULT_STAR_SETTINGS);
-      } else {
-        // Remove settings to trigger inheritance
-        setItems(prev => prev.map(item => {
-          if (item.id === currentViewId) {
-            const { starSettings, ...rest } = item;
-            return rest;
-          }
-          return item;
-        }));
+    showConfirm({
+      title: 'Reset Visual Effects',
+      message: 'Reset visual effects to default/inherited values?',
+      confirmLabel: 'Reset',
+      variant: 'info',
+      onConfirm: () => {
+        closeConfirm();
+        if (currentViewId === 'root') {
+          setRootStarSettings(DEFAULT_STAR_SETTINGS);
+        } else {
+          setItems(prev => prev.map(item => {
+            if (item.id === currentViewId) {
+              const { starSettings, ...rest } = item;
+              return rest;
+            }
+            return item;
+          }));
+        }
       }
-    }
+    });
   };
 
   // RENDER
   if (viewMode === 'dashboard') {
     return (
-      <Dashboard
-        projects={projects}
-        onCreateProject={handleCreateProject}
-        onOpenProject={handleLoadProject}
-        onDeleteProject={handleDeleteProject}
-        onImportProject={handleImportProject}
-        onRenameProject={handleRenameProject}
-      />
+      <>
+        <Dashboard
+          projects={projects}
+          onCreateProject={handleCreateProject}
+          onOpenProject={handleLoadProject}
+          onDeleteProject={handleDeleteProject}
+          onImportProject={handleImportProject}
+          onRenameProject={handleRenameProject}
+        />
+        {
+          confirmDialog && (
+            <ConfirmDialog
+              isOpen={true}
+              title={confirmDialog.title}
+              message={confirmDialog.message}
+              confirmLabel={confirmDialog.confirmLabel}
+              variant={confirmDialog.variant}
+              onConfirm={confirmDialog.onConfirm}
+              onCancel={closeConfirm}
+            />
+          )
+        }
+      </>
     );
   }
 
   return (
-    <div
-      className={`app-container ${!isDarkMode ? 'light-mode' : ''}`}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={handleDrop}
-      onClick={() => setContextMenu({ ...contextMenu, visible: false })} // Close menu on global click
-      style={{ backgroundColor: isDarkMode ? 'var(--bg-color)' : 'var(--bg-color)', color: 'var(--text-color)' }}
-    >
-      <VisualEffects
-        warpMode={transitionMode}
-        origin={transitionOrigin}
-        targetSettings={currentStarSettings}
-      />
+    <>
+      <div
+        className={`app-container ${!isDarkMode ? 'light-mode' : ''}`}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+        onClick={() => setContextMenu({ ...contextMenu, visible: false })} // Close menu on global click
+        style={{ backgroundColor: isDarkMode ? 'var(--bg-color)' : 'var(--bg-color)', color: 'var(--text-color)' }}
+      >
+        <VisualEffects
+          warpMode={transitionMode}
+          origin={transitionOrigin}
+          targetSettings={currentStarSettings}
+        />
 
 
-      <Sidebar
-        pins={visibleItems}
-        onSelectPin={(id) => { setSelectedItemId(id); }}
-        onDeletePin={handleDeleteLocation}
-        onExport={() => {
-          const data = JSON.stringify({ items, rootMapImage, isDarkMode });
-          const blob = new Blob([data], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
+        <Sidebar
+          pins={visibleItems}
+          allItems={items}
+          onSelectPin={(id) => { setSelectedItemId(id); }}
+          onDeletePin={handleDeleteLocation}
+          onExport={() => {
+            const data = JSON.stringify({ items, rootMapImage, isDarkMode });
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
 
-          const project = projects.find(p => p.id === currentProjectId);
-          const projectName = project ? project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'map-wiki';
-          const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            const project = projects.find(p => p.id === currentProjectId);
+            const projectName = project ? project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'map-wiki';
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
 
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${projectName}-${timestamp}.json`;
-          a.click();
-        }}
-        onImport={(e) => {
-          const file = e.target.files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-              const p = JSON.parse(ev.target.result);
-              if (p.items) setItems(p.items);
-              else if (p.pins) setItems(p.pins.map(x => ({ ...x, type: 'location' }))); // Migration
-
-              if (p.rootMapImage) setRootMapImage(p.rootMapImage);
-            };
-            reader.readAsText(file);
-          }
-        }}
-        onToggleTheme={() => setIsDarkMode(!isDarkMode)}
-        isDarkMode={isDarkMode}
-        breadcrumbs={getBreadcrumbs()}
-        projectName={(projects.find(p => p.id === currentProjectId) || {}).name || 'Wiki Map'}
-        onNavigate={setCurrentViewId}
-        onBack={handleBackToDashboard}
-        activeFilters={activeFilters}
-        onToggleFilter={handleToggleFilter}
-        onOpenAtlas={() => setShowAtlas(true)}
-        onExportImage={handleExportImage}
-        isGlobalEditMode={isGlobalEditMode}
-        onToggleGlobalEdit={() => setIsGlobalEditMode(!isGlobalEditMode)}
-        starSettings={currentStarSettings}
-        onUpdateStarSettings={handleUpdateStarSettings}
-        onResetStarSettings={handleResetStarSettings}
-      />
-
-      {/* Map area - no separate transition layer, MapCanvas handles its own animations */}
-      <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden' }}>
-        {/* Floating View/Edit Toggle */}
-        <div
-          className="toggle-switch"
-          onClick={() => { sfx.playUiSelect(); setIsGlobalEditMode(!isGlobalEditMode); }}
-          title={isGlobalEditMode ? "Switch to View Mode" : "Switch to Edit Mode"}
-          style={{
-            position: 'absolute',
-            bottom: '1rem',
-            left: '1rem',
-            zIndex: 30,
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${projectName}-${timestamp}.json`;
+            a.click();
           }}
-        >
-          <div className={`toggle-option ${!isGlobalEditMode ? 'active' : ''}`}>View</div>
-          <div className={`toggle-option ${isGlobalEditMode ? 'active' : ''}`}>Edit</div>
-          <div className={`toggle-slider ${isGlobalEditMode ? 'right' : 'left'}`} />
+          onImport={(e) => {
+            const file = e.target.files[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                const p = JSON.parse(ev.target.result);
+                if (p.items) setItems(p.items);
+                else if (p.pins) setItems(p.pins.map(x => ({ ...x, type: 'location' }))); // Migration
+
+                if (p.rootMapImage) setRootMapImage(p.rootMapImage);
+              };
+              reader.readAsText(file);
+            }
+          }}
+          onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+          isDarkMode={isDarkMode}
+          breadcrumbs={getBreadcrumbs()}
+          projectName={(projects.find(p => p.id === currentProjectId) || {}).name || 'Wiki Map'}
+          onNavigate={setCurrentViewId}
+          onBack={handleBackToDashboard}
+          activeFilters={activeFilters}
+          onToggleFilter={handleToggleFilter}
+          onOpenAtlas={() => setShowAtlas(true)}
+          onExportImage={handleExportImage}
+          isGlobalEditMode={isGlobalEditMode}
+          onToggleGlobalEdit={() => setIsGlobalEditMode(!isGlobalEditMode)}
+          starSettings={currentStarSettings}
+          onUpdateStarSettings={handleUpdateStarSettings}
+          onResetStarSettings={handleResetStarSettings}
+          currentViewId={currentViewId}
+          rootTitle={rootTitle}
+          rootDescription={rootDescription}
+          onUpdateRootTitle={setRootTitle}
+          onUpdateRootDescription={setRootDescription}
+        />
+
+        {/* Map area - no separate transition layer, MapCanvas handles its own animations */}
+        <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden' }}>
+          {/* Floating View/Edit Toggle */}
+          <div
+            className="toggle-switch"
+            onClick={() => { sfx.playUiSelect(); setIsGlobalEditMode(!isGlobalEditMode); }}
+            title={isGlobalEditMode ? "Switch to View Mode" : "Switch to Edit Mode"}
+            style={{
+              position: 'absolute',
+              bottom: '1rem',
+              left: '1rem',
+              zIndex: 30,
+            }}
+          >
+            <div className={`toggle-option ${!isGlobalEditMode ? 'active' : ''}`}>View</div>
+            <div className={`toggle-option ${isGlobalEditMode ? 'active' : ''}`}>Edit</div>
+            <div className={`toggle-slider ${isGlobalEditMode ? 'right' : 'left'}`} />
+          </div>
+
+          <MapCanvas
+            mapImage={getCurrentMapImage()}
+            pins={visibleItems}
+            onSelectPin={(id, origin) => {
+              if (transitionMode) return;
+              if (connectingSourceId) {
+                if (id && id !== connectingSourceId) {
+                  setItems(prev => prev.map(item => {
+                    if (item.id === connectingSourceId) {
+                      const connections = item.connections || [];
+                      if (connections.includes(id)) {
+                        return { ...item, connections: connections.filter(c => c !== id) };
+                      }
+                      return { ...item, connections: [...connections, id] };
+                    }
+                    return item;
+                  }));
+                  sfx.playUiSelect();
+                }
+                setConnectingSourceId(null);
+                return;
+              }
+
+              if (selectedItemId === id) {
+                const item = items.find(i => i.id === id);
+                if (item && item.mapImage) {
+                  sfx.playEnterMap();
+                  handleNavigate(id, 'in', origin);
+                }
+              } else {
+                setSelectedItemId(id);
+              }
+            }}
+            selectedPinId={selectedItemId}
+            connectingSourceId={connectingSourceId}
+            onContextMenu={handleRightClick}
+            onPinContextMenu={handlePinRightClick}
+            isEditing={isGlobalEditMode}
+            onPinMove={(id, x, y) => {
+              setItems(prev => prev.map(item => item.id === id ? { ...item, x, y } : item));
+            }}
+            transitionMode={transitionMode}
+            transitionOrigin={transitionOrigin}
+            isGlobalEditMode={isGlobalEditMode}
+          />
         </div>
 
-        <MapCanvas
-          mapImage={getCurrentMapImage()}
-          pins={visibleItems}
-          onSelectPin={(id, origin) => {
-            if (transitionMode) return;
-            if (connectingSourceId) {
-              if (id && id !== connectingSourceId) {
-                setItems(prev => prev.map(item => {
-                  if (item.id === connectingSourceId) {
-                    const connections = item.connections || [];
-                    if (connections.includes(id)) {
-                      return { ...item, connections: connections.filter(c => c !== id) };
-                    }
-                    return { ...item, connections: [...connections, id] };
-                  }
-                  return item;
-                }));
-                sfx.playUiSelect();
-              }
-              setConnectingSourceId(null);
-              return;
-            }
 
-            if (selectedItemId === id) {
-              const item = items.find(i => i.id === id);
-              if (item && item.mapImage) {
-                sfx.playEnterMap();
-                handleNavigate(id, 'in', origin);
-              }
-            } else {
-              setSelectedItemId(id);
+        <ContextMenu
+          {...contextMenu}
+          onAddLocation={handleAddLocation}
+          onEditPin={() => {
+            if (contextMenu.targetId) {
+              setSelectedItemId(contextMenu.targetId);
             }
           }}
-          selectedPinId={selectedItemId}
-          connectingSourceId={connectingSourceId}
-          onContextMenu={handleRightClick}
-          onPinContextMenu={handlePinRightClick}
-          isEditing={isGlobalEditMode}
-          onPinMove={(id, x, y) => {
-            setItems(prev => prev.map(item => item.id === id ? { ...item, x, y } : item));
+          onConnect={() => {
+            if (contextMenu.targetId) {
+              setConnectingSourceId(contextMenu.targetId);
+              // Maybe show a toast or change cursor?
+            }
           }}
-          transitionMode={transitionMode}
-          transitionOrigin={transitionOrigin}
-          isGlobalEditMode={isGlobalEditMode}
+          onDeletePin={() => {
+            if (contextMenu.targetId) {
+              handleDeleteLocation(contextMenu.targetId);
+            }
+          }}
+          onClose={() => setContextMenu({ ...contextMenu, visible: false })}
         />
-      </div>
 
+        {/* Top Left Controls (Back Button) */}
+        {
+          currentViewId !== 'root' && (
+            <div style={{ position: 'absolute', top: '1rem', left: '320px', zIndex: 100 }}>
+              <button
+                className="btn-small"
+                style={{
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                }}
+                onClick={() => {
+                  const currentItem = items.find(i => i.id === currentViewId);
+                  if (currentItem) {
+                    handleNavigate(currentItem.parentId, 'out');
+                  } else {
+                    handleNavigate('root', 'out');
+                  }
+                }}
+              >
+                <ChevronLeft size={16} />
+                Back
+              </button>
+            </div>
+          )
+        }
 
-      <ContextMenu
-        {...contextMenu}
-        onAddLocation={handleAddLocation}
-        onEditPin={() => {
-          if (contextMenu.targetId) {
-            setSelectedItemId(contextMenu.targetId);
-          }
-        }}
-        onConnect={() => {
-          if (contextMenu.targetId) {
-            setConnectingSourceId(contextMenu.targetId);
-            // Maybe show a toast or change cursor?
-          }
-        }}
-        onDeletePin={() => {
-          if (contextMenu.targetId) {
-            handleDeleteLocation(contextMenu.targetId);
-          }
-        }}
-        onClose={() => setContextMenu({ ...contextMenu, visible: false })}
-      />
+        {/* Top Right Controls */}
+        <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 100, display: 'flex', gap: '0.5rem' }}>
+          {/* Delete Map Button */}
+          {getCurrentMapImage() && isGlobalEditMode && !selectedItem && (
+            <button
+              className="btn-danger"
+              style={{
+                padding: '0.5rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }}
+              onClick={handleDeleteMap}
+              title="Delete Current Map Image"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          )}
 
-      {/* Top Left Controls (Back Button) */}
-      {
-        currentViewId !== 'root' && (
-          <div style={{ position: 'absolute', top: '1rem', left: '320px', zIndex: 100 }}>
+          {/* Location Info Button (when inside a sub-location) */}
+          {currentViewId !== 'root' && !selectedItem && (
             <button
               className="btn-primary"
               style={{
                 padding: '0.5rem 1rem',
-                backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                backgroundColor: 'var(--primary-color)',
                 color: 'white',
-                border: '1px solid var(--border-color)',
+                border: 'none',
                 borderRadius: '0.5rem',
                 cursor: 'pointer',
                 fontWeight: '600',
-                backdropFilter: 'blur(4px)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
               }}
-              onClick={() => {
-                const currentItem = items.find(i => i.id === currentViewId);
-                if (currentItem) {
-                  handleNavigate(currentItem.parentId, 'out');
-                } else {
-                  handleNavigate('root', 'out');
-                }
-              }}
+              onClick={() => setSelectedItemId(currentViewId)}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-              Back
+              Location Info
             </button>
-          </div>
-        )
-      }
+          )}
+        </div>
 
-      {/* Top Right Controls */}
-      <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 100, display: 'flex', gap: '0.5rem' }}>
-        {/* Delete Map Button */}
-        {getCurrentMapImage() && isGlobalEditMode && !selectedItem && (
-          <button
-            className="btn-danger"
-            style={{
-              padding: '0.5rem',
-              backgroundColor: 'rgba(239, 68, 68, 0.9)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-            }}
-            onClick={handleDeleteMap}
-            title="Delete Current Map Image"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-          </button>
-        )}
+        {
+          showAtlas && (
+            <AtlasView
+              items={items}
+              currentViewId={currentViewId}
+              onNavigate={setCurrentViewId}
+              onSelect={setSelectedItemId}
+              onClose={() => setShowAtlas(false)}
+            />
+          )
+        }
 
-        {/* Location Info Button (when inside a sub-location) */}
-        {currentViewId !== 'root' && !selectedItem && (
-          <button
-            className="btn-primary"
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: 'var(--primary-color)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontWeight: '600',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-            }}
-            onClick={() => setSelectedItemId(currentViewId)}
-          >
-            Location Info
-          </button>
-        )}
-      </div>
-
+        {
+          activeEditorItem && (
+            <WikiEditor
+              selectedPin={activeEditorItem}
+              isVisible={isWikiVisible}
+              onExited={() => setActiveEditorItem(null)}
+              isEditing={isGlobalEditMode}
+              onClose={() => setSelectedItemId(null)}
+              onDelete={() => handleDeleteLocation(activeEditorItem.id)}
+              items={items}
+              onRemoveConnection={(targetId) => {
+                setItems(prev => prev.map(i => {
+                  if (i.id === activeEditorItem.id) {
+                    return { ...i, connections: (i.connections || []).filter(c => c !== targetId) };
+                  }
+                  return i;
+                }));
+              }}
+              onSave={(id, updates) => {
+                setItems(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+              }}
+              onEnterMap={(id) => {
+                handleNavigate(id, 'in');
+              }}
+              isGlobalEditMode={isGlobalEditMode}
+            />
+          )
+        }
+      </div >
       {
-        showAtlas && (
-          <AtlasView
-            items={items}
-            currentViewId={currentViewId}
-            onNavigate={setCurrentViewId}
-            onSelect={setSelectedItemId}
-            onClose={() => setShowAtlas(false)}
+        confirmDialog && (
+          <ConfirmDialog
+            isOpen={true}
+            title={confirmDialog.title}
+            message={confirmDialog.message}
+            confirmLabel={confirmDialog.confirmLabel}
+            variant={confirmDialog.variant}
+            onConfirm={confirmDialog.onConfirm}
+            onCancel={closeConfirm}
           />
         )
       }
-
-      {
-        activeEditorItem && (
-          <WikiEditor
-            selectedPin={activeEditorItem}
-            isVisible={isWikiVisible}
-            onExited={() => setActiveEditorItem(null)}
-            isEditing={isGlobalEditMode}
-            onClose={() => setSelectedItemId(null)}
-            onDelete={() => handleDeleteLocation(activeEditorItem.id)}
-            items={items}
-            onRemoveConnection={(targetId) => {
-              setItems(prev => prev.map(i => {
-                if (i.id === activeEditorItem.id) {
-                  return { ...i, connections: (i.connections || []).filter(c => c !== targetId) };
-                }
-                return i;
-              }));
-            }}
-            onSave={(id, updates) => {
-              setItems(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
-            }}
-            onEnterMap={(id) => {
-              handleNavigate(id, 'in');
-            }}
-            isGlobalEditMode={isGlobalEditMode}
-          />
-        )
-      }
-    </div >
+    </>
   );
 }
 export default App;

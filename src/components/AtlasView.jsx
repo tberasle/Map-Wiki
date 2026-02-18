@@ -110,7 +110,7 @@ const AtlasView = ({ items, currentViewId, onNavigate, onSelect, onClose }) => {
                 <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Map size={24} /> Atlas
                 </h2>
-                <button className="btn-secondary" onClick={onClose}>Close</button>
+                <button className="btn-small" onClick={onClose} style={{ gap: '0.5rem' }}>Close</button>
             </div>
 
             <div style={{ overflowY: 'auto', flex: 1 }}>

@@ -50,6 +50,8 @@ const ProjectLoader = {
                     const safeData = {
                         items: [], // Default empty items if missing
                         rootMapImage: null,
+                        rootTitle: '',
+                        rootDescription: '',
                         isDarkMode: projectData.isDarkMode ?? true,
                         rootStarSettings: projectData.rootStarSettings || DEFAULT_STAR_SETTINGS,
                         ...projectData, // Overwrite defaults with actual data

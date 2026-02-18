@@ -73,13 +73,13 @@ const WikiEditor = ({ selectedPin, onClose, onSave, onEnterMap, isEditing, onSet
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     {isGlobalEditMode && (
                         <button
-                            className="icon-btn"
+                            className="btn-small"
                             onClick={() => { sfx.playClick(); onDelete(); }}
                             onMouseEnter={() => sfx.playHover()}
                             title="Delete Location"
-                            style={{ color: '#ef4444' }}
+                            style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}
                         >
-                            <Trash2 size={20} />
+                            <Trash2 size={16} />
                         </button>
                     )}
                     {!isEditing && isGlobalEditMode && (
@@ -94,12 +94,12 @@ const WikiEditor = ({ selectedPin, onClose, onSave, onEnterMap, isEditing, onSet
                         </button>
                     )}
                     <button
-                        className="icon-btn"
+                        className="btn-small"
                         onClick={() => { sfx.playUiSelect(); onClose(); }}
                         onMouseEnter={() => sfx.playHover()}
                         title="Close"
                     >
-                        <X size={24} />
+                        <X size={16} />
                     </button>
                 </div>
             </div>

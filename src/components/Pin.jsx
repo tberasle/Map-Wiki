@@ -27,8 +27,9 @@ const Pin = ({ x, y, data, isSelected, onClick, color, scale = 1, isEditing, onM
     const pinScale = Math.max(0.1, (1 / scale) * sizeMultiplier); // Apply size multiplier
 
     // Determine anchor point based on icon type
-    const CENTER_ANCHOR_ICONS = ['star', 'planet', 'spaceship', 'danger', 'energy', 'shield', 'fuel'];
-    const isCenterAnchored = CENTER_ANCHOR_ICONS.includes(data.icon);
+    // Determine anchor point based on icon type
+    // All icons EXCEPT the default 'Pin' icon should be center anchored to prevent drift
+    const isCenterAnchored = data.icon !== 'default';
 
     // If center anchored, we want the center of the icon to be at (x,y).
     // If bottom anchored, we want the bottom-center of the icon to be at (x,y).
